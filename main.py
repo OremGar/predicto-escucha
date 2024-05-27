@@ -3,6 +3,8 @@ from paho.mqtt import client as mqtt_client
 import json
 import tratamiento
 import sys
+import firebase_admin
+from firebase_admin import credentials
 
 broker = "nam1.cloud.thethings.network"
 port = 1883
@@ -29,11 +31,15 @@ def connect_mqtt() -> mqtt_client:
 
 def subscribe(client: mqtt_client):
     def on_message(client, userdata, msg):
-        #print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
-        messageJson = json.loads(msg.payload.decode())
-        uplinkMessage = messageJson["uplink_message"]
-        data = uplinkMessage["decoded_payload"]["data"]
-        
+        try:
+            #print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+            messageJson = json.loads(msg.payload.decode())
+            uplinkMessage = messageJson["uplink_message"]
+            data = uplinkMessage["decoded_payload"]["data"]
+        except Exception as e:
+            print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
+            pass
+
         try:
             tratamiento.TratamientoDatos(data, messageJson["end_device_ids"]["dev_eui"], messageJson["received_at"])
         except Exception as e:
@@ -50,4 +56,6 @@ def run():
 
 
 if __name__ == '__main__':
+    cred = credentials.Certificate("predicto-f6a28-firebase-adminsdk-be1mn-4f5e3a53fe.json")
+    firebase_admin.initialize_app(cred)
     run()

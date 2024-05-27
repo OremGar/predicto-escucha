@@ -1,34 +1,40 @@
 import calculo
 import bd
 import psycopg2
+from psycopg2.extras import execute_values
+import conversion
+import datetime
+import firebase
 
-def TratamientoDatos(payload, devEui, date):
+TIPO_ANOMALIA_ROLL = "roll"
+TIPO_ANOMALIA_PITCH = "pitch"
+TIPO_ANOMALIA_TEMPERATURA = "temperatura"
+
+def TratamientoDatos(payload, devEui, fechaStr):
     temperatura = 0
     aceleraciones = {}
+    aceleracionesX = []
+    aceleracionesY = []
+    aceleracionesZ = []
+
+    aceleraciones = ()
 
     roll = 0
     pitch = 0
 
+    tolerancias = None
+    tolerancia = None
+
+    motores = None
+    motor = None
+
+    usuarios = None
+    usuariosTokens = []
+
+    idGravitacion = None
+
     conexion = None
     cur = None
-
-    try:
-        temperatura = payload["Temp"]
-        aceleraciones = payload["AccData"]
-
-    except Exception as e:
-        print(str(e))
-        raise ValueError(e)
-    
-    print(temperatura)
-    print(devEui)
-    for elemento in aceleraciones:
-        print(elemento)
-        roll = calculo.CalculaRoll(xAxis=elemento["AccX"], yAxis=elemento["AccY"], zAxis=elemento["AccZ"], ultimoRoll=roll)
-        pitch = calculo.CalculaPitch(xAxis=elemento["AccX"], yAxis=elemento["AccY"], zAxis=elemento["AccZ"], ultimoPitch=pitch)
-    
-    print(roll)
-    print(pitch)
 
     try:
         conexion = bd.conexion()
@@ -40,18 +46,158 @@ def TratamientoDatos(payload, devEui, date):
         cur = conexion.cursor()
         cur.execute('select * from motores where eui = %(devEui)s', {"devEui":devEui})
         motores = cur.fetchall()
-
-        for motor in motores:
-            print(motor)
+        motor = motores[0]
 
         cur.close()
+        conexion.commit()
     except psycopg2.OperationalError:
         cur.close()
         conexion.close()
         print(str(e))
         raise ValueError(e)
-    
 
+    try:
+        temperatura = payload["Temp"]
+        aceleraciones = payload["AccData"]
+
+    except Exception as e:
+        print(str(e))
+        raise ValueError(e)
+    
+    fechaStrTruncated = fechaStr[:19]
+
+    # Convertir la cadena truncada a un objeto datetime
+    fecha = datetime.datetime.strptime(fechaStrTruncated, "%Y-%m-%dT%H:%M:%S")
+    fecha = fecha - datetime.timedelta(hours=6)
+
+    for elemento in aceleraciones:
+        aceleracionesX.append(elemento["AccX"])
+        aceleracionesY.append(elemento["AccY"])
+        aceleracionesZ.append(elemento["AccZ"])
+        try:
+            cur = conexion.cursor()
+            cur.execute("insert into aceleraciones (id_motor, fecha, eje_x, eje_y, eje_z) values (%(motor)s,%(fecha)s,%(eje_x)s,%(eje_y)s,%(eje_z)s)", {"motor":motor[0], "fecha":fecha, "eje_x":elemento["AccX"], "eje_y":elemento["AccY"], "eje_z":elemento["AccZ"]})
+            conexion.commit()
+            cur.close()
+        except Exception as e:
+            cur.close()
+            conexion.close
+            print(str(e))
+            raise ValueError(e)
+    
+    for i,_ in enumerate(aceleracionesX):
+        roll = calculo.CalculaRoll(xAxis=aceleracionesX[i], yAxis=aceleracionesY[i], zAxis=aceleracionesZ[i], ultimoRoll=roll)
+        pitch = calculo.CalculaPitch(xAxis=aceleracionesX[i], yAxis=aceleracionesY[i], zAxis=aceleracionesZ[i], ultimoPitch=pitch)
+
+    try:
+        cur = conexion.cursor()
+        cur.execute("insert into gravitacion (id_motor, roll, pitch, fecha, temperatura) values (%(motor)s,%(roll)s,%(pitch)s,%(fecha)s,%(temperatura)s) returning id", {"motor":motor[0], "roll":float(roll), "pitch":float(pitch), "fecha":fecha, "temperatura":float(temperatura)})
+        conexion.commit()
+        cur.close()
+    except Exception as e:
+        cur.close()
+        conexion.close()
+        print(str(e))
+        raise ValueError(e)
+    
+    vibracionesX, vibracionesY, vibracionesZ = conversion.AcelACoor(aceleracionesX, aceleracionesY, aceleracionesZ)
+
+    for i,_ in enumerate(vibracionesX):
+        try:
+            cur = conexion.cursor()
+            cur.execute("insert into motores_vibraciones (hora, eje_x, eje_y, eje_z, id_motor) values (%(hora)s,%(eje_x)s,%(eje_y)s,%(eje_z)s,%(id_motor)s)", {"hora":fecha, "eje_x":float(vibracionesX[i]), "eje_y":float(vibracionesY[i]), "eje_z":float(vibracionesZ[i]), "id_motor":motor[0]})
+            idGravitacion = cur.fetchone()[0]
+            conexion.commit()
+            cur.close()
+        except Exception as e:
+            cur.close()
+            conexion.close()
+            print(str(e))
+            raise ValueError(e)
+
+    try:
+        cur = conexion.cursor()
+        cur.execute("select * from token_firebase")
+        usuarios = cur.fetchall()
+
+        cur.close()
+        conexion.commit()
+    except Exception as e:
+        cur.close()
+        conexion.close()
+        print(str(e))
+        raise ValueError(e)
+
+    for usuario in usuarios:
+        usuariosTokens.append(usuario[0])
+
+    try:
+        cur = conexion.cursor()
+        cur.execute("select * from tolerancia where id_motor = %(motor)s", {"motor":motor[0]})
+        tolerancias = cur.fetchall()
+        tolerancia = tolerancias[0]
+
+        cur.close()
+        conexion.commit()
+    except Exception as e:
+        cur.close()
+        conexion.close()
+        print(str(e))
+        raise ValueError(e)
+
+    if roll > tolerancia[2] or roll < tolerancia[3]:
+        try:
+            firebase.EnviaNotificacion(cuerpo="Se detecto una desviación horizontal anomala", destinos=usuariosTokens, titulo=f"Motor {motor[0]}")
+        except Exception as e:
+            print(str(e))
+            raise ValueError(e)
+
+        try:
+            cur = conexion.cursor()
+            cur.execute("insert into anomalias (id_gravitacion, anomalia) values (%(id_gravitacion)s, %(anomalia)s)", {"id_gravitacion":idGravitacion, "anomalia":TIPO_ANOMALIA_ROLL})
+            conexion.commit()
+            cur.close()
+        except Exception as e:
+            cur.close()
+            conexion.close()
+            print(str(e))
+            raise ValueError(e)
+
+    if pitch > tolerancia[5] or pitch < tolerancia[6]:
+        try:
+            firebase.EnviaNotificacion(cuerpo="Se detecto una desviación vertical anomala", destinos=usuariosTokens, titulo=f"Motor {motor[0]}")
+        except Exception as e:
+            print(str(e))
+            raise ValueError(e)
+
+        try:
+            cur = conexion.cursor()
+            cur.execute("insert into anomalias (id_gravitacion, anomalia) values (%(id_gravitacion)s, %(anomalia)s)", {"id_gravitacion":idGravitacion, "anomalia":TIPO_ANOMALIA_PITCH})
+            conexion.commit()
+            cur.close()
+        except Exception as e:
+            cur.close()
+            conexion.close()
+            print(str(e))
+            raise ValueError(e)
+
+    if temperatura > tolerancia[4]:
+        try:
+            firebase.EnviaNotificacion(cuerpo="Se detecto una temperatura anomala", destinos=usuariosTokens, titulo=f"Motor {motor[0]}")
+        except Exception as e:
+            print(str(e))
+            raise ValueError(e)
+        
+        try:
+            cur = conexion.cursor()
+            cur.execute("insert into anomalias (id_gravitacion, anomalia) values (%(id_gravitacion)s, %(anomalia)s)", {"id_gravitacion":idGravitacion, "anomalia":TIPO_ANOMALIA_TEMPERATURA})
+            conexion.commit()
+            cur.close()
+        except Exception as e:
+            cur.close()
+            conexion.close()
+            print(str(e))
+            raise ValueError(e)
 
     cur.close()
     conexion.close()

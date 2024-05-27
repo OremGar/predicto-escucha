@@ -1,4 +1,3 @@
-import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -28,15 +27,20 @@ def AcelACoor(ax, ay, az):
         positions_y.append(y)
         positions_z.append(z)
 
+        """
         df = pd.DataFrame({
         'Columna1': positions_x,
         'Columna2': positions_y,
         'Columna3': positions_z
         })
+        """
 
+    return positions_x, positions_y, positions_z
+
+    """
     # Guardar el DataFrame en un archivo CSV
     df.to_csv('output.csv', index=False)
-
+    
     # Resultados
     for i in range(len(positions_x)):
         print(f'X: {positions_x[i]:.10f}')
@@ -70,3 +74,4 @@ def AcelACoor(ax, ay, az):
 
     plt.tight_layout()
     plt.show()
+    """
