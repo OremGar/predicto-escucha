@@ -1,6 +1,3 @@
-import matplotlib.pyplot as plt
-import pandas as pd
-
 def AcelACoor(ax, ay, az):
 
     dt = 0.01

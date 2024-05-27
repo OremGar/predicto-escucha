@@ -3,3 +3,4 @@ sympy==1.12
 paho-mqtt==2.1.0
 matplotlib==3.8.3
 pandas==2.2.1
+firebase-admin==6.5.0
