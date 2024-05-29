@@ -18,6 +18,12 @@ def TratamientoDatos(payload, devEui, fechaStr):
     aceleracionesY = []
     aceleracionesZ = []
 
+    difX = 0
+    difY = 0
+    difZ = 0
+
+    esPrimero = False
+
     aceleraciones = ()
 
     roll = 0
@@ -49,6 +55,10 @@ def TratamientoDatos(payload, devEui, fechaStr):
         cur = conexion.cursor()
         cur.execute('select * from motores where eui = %(devEui)s', {"devEui":devEui})
         motores = cur.fetchall()
+        
+        if len(motores) == 0:
+            return
+
         motor = motores[0]
 
         cur.close()
@@ -56,6 +66,16 @@ def TratamientoDatos(payload, devEui, fechaStr):
     except psycopg2.OperationalError:
         cur.close()
         conexion.close()
+        print(str(e))
+        raise ValueError(e)
+
+    try:
+        cur = conexion.cursor()
+        cur.execute('select count(*) > 0from motores_vibraciones where id_motor = %(motor)s', {"motor":motor[0]})
+        motorVibCont = cur.fetchone()[0]
+        esPrimero = motorVibCont
+
+    except Exception as e:
         print(str(e))
         raise ValueError(e)
 
@@ -107,6 +127,7 @@ def TratamientoDatos(payload, devEui, fechaStr):
     vibracionesX, vibracionesY, vibracionesZ = conversion.AcelACoor(aceleracionesX, aceleracionesY, aceleracionesZ)
 
     for i,_ in enumerate(vibracionesX):
+
         try:
             cur = conexion.cursor()
             cur.execute("insert into motores_vibraciones (hora, eje_x, eje_y, eje_z, id_motor) values (%(hora)s,%(eje_x)s,%(eje_y)s,%(eje_z)s,%(id_motor)s)", {"hora":fecha, "eje_x":float(vibracionesX[i]), "eje_y":float(vibracionesY[i]), "eje_z":float(vibracionesZ[i]), "id_motor":motor[0]})

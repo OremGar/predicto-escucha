@@ -6,9 +6,9 @@ def AcelACoor(ax, ay, az):
     vx, vy, vz = 0.0, 0.0, 0.0
     x, y, z = 0.0, 0.0, 0.0
 
-    positions_x = [x]
-    positions_y = [y]
-    positions_z = [z]
+    positions_x = []
+    positions_y = []
+    positions_z = []
 
     # Integración numérica para calcular posiciones
     for a_x, a_y, a_z in zip(ax, ay, az):
