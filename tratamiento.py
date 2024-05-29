@@ -71,7 +71,7 @@ def TratamientoDatos(payload, devEui, fechaStr):
 
     try:
         cur = conexion.cursor()
-        cur.execute('select count(*) > 0from motores_vibraciones where id_motor = %(motor)s', {"motor":motor[0]})
+        cur.execute('select count(*) > 0 from motores_vibraciones where id_motor = %(motor)s', {"motor":motor[0]})
         motorVibCont = cur.fetchone()[0]
         esPrimero = motorVibCont
 
