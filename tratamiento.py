@@ -230,7 +230,7 @@ def TratamientoDatos(payload, devEui, fechaStr):
         df = pd.DataFrame(motoresVibraciones)
         data = df.values.tolist()
 
-        respuesta = requests.post("http://172.18.0.24/receive_dataframe", json={"data": data})
+        respuesta = requests.post("http://172.18.0.24:8000/receive_dataframe", json={"data": data})
         print(respuesta.json())
 
         conexion.commit()
