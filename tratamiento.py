@@ -95,6 +95,7 @@ def TratamientoDatos(payload, devEui, fechaStr):
     try:
         cur = conexion.cursor()
         cur.execute("insert into gravitacion (id_motor, roll, pitch, fecha, temperatura) values (%(motor)s,%(roll)s,%(pitch)s,%(fecha)s,%(temperatura)s) returning id", {"motor":motor[0], "roll":float(roll), "pitch":float(pitch), "fecha":fecha, "temperatura":float(temperatura)})
+        idGravitacion = cur.fetchone()[0]
         conexion.commit()
         cur.close()
     except Exception as e:
