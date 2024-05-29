@@ -296,7 +296,7 @@ def TratamientoDatos(payload, devEui, fechaStr):
             conexion.close()
             print(str(e))
             raise ValueError(e)
-
+    
     print(temperatura)
     print(pitch)
     print(roll)
