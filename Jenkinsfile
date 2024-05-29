@@ -38,7 +38,7 @@ pipeline {
             steps {
                 script{
                     sh """ 
-                        docker run -d --name ${nombre_final} ${nombre_imagen}:${tag_imagen}
+                        docker run -d --net predicto_subnet --ip 172.18.0.23 --name ${nombre_final} ${nombre_imagen}:${tag_imagen}
                     """
                     }
                 }                                  

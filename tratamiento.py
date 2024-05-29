@@ -1,10 +1,11 @@
 import calculo
 import bd
 import psycopg2
-from psycopg2.extras import execute_values
 import conversion
 import datetime
 import firebase
+import pandas as pd
+import requests
 
 TIPO_ANOMALIA_ROLL = "roll"
 TIPO_ANOMALIA_PITCH = "pitch"
@@ -27,6 +28,8 @@ def TratamientoDatos(payload, devEui, fechaStr):
 
     motores = None
     motor = None
+
+    motoresVibraciones = None
 
     usuarios = None
     usuariosTokens = []
@@ -197,6 +200,24 @@ def TratamientoDatos(payload, devEui, fechaStr):
             conexion.close()
             print(str(e))
             raise ValueError(e)
+
+    try:
+        cur = conexion.cursor()
+        cur.execute("select eje_x, eje_y from motores_vibraciones where id_motor = %(id_motor)s", {"id_motor":motor[0]})
+        motoresVibraciones = cur.fetchall()
+        df = pd.DataFrame(motoresVibraciones)
+        data = df.values.tolist()
+
+        respuesta = requests.post("http://0.0.0.0:8000/receive_dataframe", json={"data": data})
+        print(respuesta.json())
+
+        conexion.commit()
+        cur.close()
+    except Exception as e:
+        cur.close()
+        conexion.close()
+        print(str(e))
+        raise ValueError(e)
 
     cur.close()
     conexion.close()
