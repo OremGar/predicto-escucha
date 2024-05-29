@@ -241,5 +241,11 @@ def TratamientoDatos(payload, devEui, fechaStr):
         print(str(e))
         raise ValueError(e)
 
+    print(temperatura)
+    print(pitch)
+    print(roll)
+
+    print(aceleraciones)
+
     cur.close()
     conexion.close()
