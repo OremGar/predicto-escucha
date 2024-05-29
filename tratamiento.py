@@ -26,6 +26,9 @@ def TratamientoDatos(payload, devEui, fechaStr):
 
     aceleraciones = ()
 
+    ultimoEstadoContador = 0
+    vibracionesContador = 0
+
     roll = 0
     pitch = 0
 
@@ -51,6 +54,7 @@ def TratamientoDatos(payload, devEui, fechaStr):
         print(str(e))
         raise ValueError(e)
 
+    #Se obtiene el motor
     try:
         cur = conexion.cursor()
         cur.execute('select * from motores where eui = %(devEui)s', {"devEui":devEui})
@@ -69,6 +73,7 @@ def TratamientoDatos(payload, devEui, fechaStr):
         print(str(e))
         raise ValueError(e)
 
+    #Se cuentan las vibraciones, si es menor a 0, se hace el ajuste inicial COMPLETARRRRR
     try:
         cur = conexion.cursor()
         cur.execute('select count(*) > 0 from motores_vibraciones where id_motor = %(motor)s', {"motor":motor[0]})
@@ -79,6 +84,7 @@ def TratamientoDatos(payload, devEui, fechaStr):
         print(str(e))
         raise ValueError(e)
 
+    #Se obtiene la temperatura y las aceleraciones del payload
     try:
         temperatura = payload["Temp"]
         aceleraciones = payload["AccData"]
@@ -93,6 +99,7 @@ def TratamientoDatos(payload, devEui, fechaStr):
     fecha = datetime.datetime.strptime(fechaStrTruncated, "%Y-%m-%dT%H:%M:%S")
     fecha = fecha - datetime.timedelta(hours=6)
 
+    #Se agregan las aceleraciones a la base de datos
     for elemento in aceleraciones:
         aceleracionesX.append(elemento["AccX"])
         aceleracionesY.append(elemento["AccY"])
@@ -107,7 +114,8 @@ def TratamientoDatos(payload, devEui, fechaStr):
             conexion.close
             print(str(e))
             raise ValueError(e)
-    
+
+    # Se calcula el roll y pitch de las aceleraciones para después ser agregadas
     for i,_ in enumerate(aceleracionesX):
         roll = calculo.CalculaRoll(xAxis=aceleracionesX[i], yAxis=aceleracionesY[i], zAxis=aceleracionesZ[i], ultimoRoll=roll)
         pitch = calculo.CalculaPitch(xAxis=aceleracionesX[i], yAxis=aceleracionesY[i], zAxis=aceleracionesZ[i], ultimoPitch=pitch)
@@ -124,8 +132,10 @@ def TratamientoDatos(payload, devEui, fechaStr):
         print(str(e))
         raise ValueError(e)
     
+    #Se convierten las aceleraciones en coordenadas
     vibracionesX, vibracionesY, vibracionesZ = conversion.AcelACoor(aceleracionesX, aceleracionesY, aceleracionesZ)
 
+    #Se agregan las coordenadas (vibraciones) a la base de datos
     for i,_ in enumerate(vibracionesX):
 
         try:
@@ -139,6 +149,19 @@ def TratamientoDatos(payload, devEui, fechaStr):
             print(str(e))
             raise ValueError(e)
 
+    #Se obtiene el conteo de vibraciones actual
+    try:
+        cur = conexion.cursor()
+        cur.execute('select count(*) from motores_vibraciones where id_motor = %(motor)s', {"motor":motor[0]})
+        vibracionesContador = cur.fetchone()[0]
+        
+        conexion.commit()
+        cur.close()
+    except Exception as e:
+        print(str(e))
+        raise ValueError(e)
+
+    #Se obtienen los tokens de los dispositivos de firebase
     try:
         cur = conexion.cursor()
         cur.execute("select * from token_firebase")
@@ -152,8 +175,10 @@ def TratamientoDatos(payload, devEui, fechaStr):
         print(str(e))
         raise ValueError(e)
 
+    #Se agregan a la lista de usuariosTokens los tokens de los usuarios
     for usuario in usuarios:
         usuariosTokens.append(usuario[0])
+
 
     try:
         cur = conexion.cursor()
@@ -222,16 +247,23 @@ def TratamientoDatos(payload, devEui, fechaStr):
             conexion.close()
             print(str(e))
             raise ValueError(e)
-
+    
+    #Se cuentan los estados del motor
     try:
         cur = conexion.cursor()
-        cur.execute("select eje_x, eje_y from motores_vibraciones where id_motor = %(id_motor)s", {"id_motor":motor[0]})
-        motoresVibraciones = cur.fetchall()
-        df = pd.DataFrame(motoresVibraciones)
-        data = df.values.tolist()
-
-        respuesta = requests.post("http://172.18.0.24:8000/receive_dataframe", json={"data": data})
-        print(respuesta.json())
+        cur.execute("select count(*) from motores_estados where id_motor = %(id_motor)s", {"id_motor":motor[0]})
+        
+        if cur.fetchone()[0] > 0:
+            conexion.commit()
+            cur.close()
+            
+            cur = conexion.cursor()
+            
+            cur.execute("select contador from motores_estados where id_motor = %(id_motor)s order by fecha DESC LIMIT 1", {"id_motor":motor[0]})
+            ultimoEstadoContador = cur.fetchone()[0]
+            
+            conexion.commit()
+            cur.close()
 
         conexion.commit()
         cur.close()
@@ -240,6 +272,30 @@ def TratamientoDatos(payload, devEui, fechaStr):
         conexion.close()
         print(str(e))
         raise ValueError(e)
+
+    if ultimoEstadoContador == 0 or (ultimoEstadoContador + 100) < vibracionesContador:
+        try:
+            cur = conexion.cursor()
+            cur.execute("select eje_x, eje_y from motores_vibraciones where id_motor = %(id_motor)s ORDER BY hora DESC", {"id_motor":motor[0]})
+            motoresVibraciones = cur.fetchall()
+            df = pd.DataFrame(motoresVibraciones)
+            data = df.values.tolist()
+
+            respuesta = requests.post("http://172.18.0.24:8000/receive_dataframe", json={"data": data})
+            if respuesta.json()["exito"] == True:
+                conexion.commit()
+                cur.close()
+
+                cur = conexion.cursor()
+                cur.execute("insert into motores_estados (id_motor, fecha, estado, contador) values(%(id_motor)s, %(fecha)s, %(estado)s, %(contador)s)", {"id_motor":motor[0], "fecha":fecha, "estado":respuesta.json()["cuerpo"], "contador":vibracionesContador})
+
+            conexion.commit()
+            cur.close()
+        except Exception as e:
+            cur.close()
+            conexion.close()
+            print(str(e))
+            raise ValueError(e)
 
     print(temperatura)
     print(pitch)
