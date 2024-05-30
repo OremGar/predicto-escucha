@@ -6,6 +6,7 @@ import datetime
 import firebase
 import pandas as pd
 import requests
+import math
 
 TIPO_ANOMALIA_ROLL = "roll"
 TIPO_ANOMALIA_PITCH = "pitch"
@@ -104,6 +105,10 @@ def TratamientoDatos(payload, devEui, fechaStr):
         aceleracionesX.append(elemento["AccX"])
         aceleracionesY.append(elemento["AccY"])
         aceleracionesZ.append(elemento["AccZ"])
+        
+        if math.isnan(elemento["AccX"]) or math.isnan(elemento["AccY"]) or math.isnan(elemento["AccZ"]):
+            continue
+        
         try:
             cur = conexion.cursor()
             cur.execute("insert into aceleraciones (id_motor, fecha, eje_x, eje_y, eje_z) values (%(motor)s,%(fecha)s,%(eje_x)s,%(eje_y)s,%(eje_z)s)", {"motor":motor[0], "fecha":fecha, "eje_x":elemento["AccX"], "eje_y":elemento["AccY"], "eje_z":elemento["AccZ"]})
@@ -121,8 +126,12 @@ def TratamientoDatos(payload, devEui, fechaStr):
         pitch = calculo.CalculaPitch(xAxis=aceleracionesX[i], yAxis=aceleracionesY[i], zAxis=aceleracionesZ[i], ultimoPitch=pitch)
 
     try:
+        if math.isnan(roll) or math.isnan(pitch) or math.isnan(temperatura):
+            return
+
         cur = conexion.cursor()
         cur.execute("insert into gravitacion (id_motor, roll, pitch, fecha, temperatura) values (%(motor)s,%(roll)s,%(pitch)s,%(fecha)s,%(temperatura)s) returning id", {"motor":motor[0], "roll":float(roll), "pitch":float(pitch), "fecha":fecha, "temperatura":float(temperatura)})
+        
         idGravitacion = cur.fetchone()[0]
         conexion.commit()
         cur.close()
@@ -139,6 +148,9 @@ def TratamientoDatos(payload, devEui, fechaStr):
     for i,_ in enumerate(vibracionesX):
 
         try:
+            if math.isnan(vibracionesX[i]) or math.isnan(vibracionesY[i]) or math.isnan(vibracionesZ[i]):
+                return
+
             cur = conexion.cursor()
             cur.execute("insert into motores_vibraciones (hora, eje_x, eje_y, eje_z, id_motor) values (%(hora)s,%(eje_x)s,%(eje_y)s,%(eje_z)s,%(id_motor)s)", {"hora":fecha, "eje_x":float(vibracionesX[i]), "eje_y":float(vibracionesY[i]), "eje_z":float(vibracionesZ[i]), "id_motor":motor[0]})
             conexion.commit()
